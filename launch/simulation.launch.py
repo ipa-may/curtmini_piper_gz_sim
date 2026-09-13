@@ -114,7 +114,7 @@ def _launch_setup(context):
     moveit_share = Path(
         get_package_share_directory('curtmini_piper_moveit_config')
     )
-    curt_share = Path(get_package_share_directory('curt_mini'))
+    curt_share = Path(get_package_share_directory('curt_mini_description'))
     agx_urdf_share = Path(
         get_package_share_directory('agx_arm_urdf')
     )
@@ -234,8 +234,8 @@ def _launch_setup(context):
                     IncludeLaunchDescription(
                         PythonLaunchDescriptionSource(
                             str(
-                                curt_share
-                                / 'bringup'
+                                Path(get_package_share_directory('curt_mini_teleop'))
+                                / 'launch'
                                 / 'joystick.launch.py'
                             )
                         )

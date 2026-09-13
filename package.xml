@@ -12,7 +12,8 @@
   <exec_depend>agx_arm_urdf</exec_depend>
   <exec_depend>ament_index_python</exec_depend>
   <exec_depend>controller_manager</exec_depend>
-  <exec_depend>curt_mini</exec_depend>
+  <exec_depend>curt_mini_description</exec_depend>
+  <exec_depend>curt_mini_teleop</exec_depend>
   <exec_depend>curtmini_piper_description</exec_depend>
   <exec_depend>curtmini_piper_moveit_config</exec_depend>
   <exec_depend>diff_drive_controller</exec_depend>

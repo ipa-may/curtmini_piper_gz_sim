@@ -1,0 +1,15 @@
+# Python caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local ROS workspace outputs
+/build/
+/install/
+/log/
+
+# Local industrial_ci checkouts
+/.industrial_ci/
+/industrial_ci/
+
+.vscode/

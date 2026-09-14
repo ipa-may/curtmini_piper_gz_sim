@@ -1,0 +1,30 @@
+name: ROS CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  jazzy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build and test simulation packages
+        uses: ros-industrial/industrial_ci@master
+        env:
+          ROS_DISTRO: jazzy
+          ROS_REPO: main
+          # Keep descriptions, MoveIt configuration, and joystick teleoperation.
+          # Exclude hardware bringup/drivers and unrelated motion examples
+          # before rosdep resolves the upstream workspace dependencies.
+          UPSTREAM_WORKSPACE: >-
+            dependencies.repos
+            -curt_mini/curt_mini
+            -curt_mini/ipa_ros2_control
+            -curtmini_piper/curtmini_piper_bringup
+            -curtmini_piper/curtmini_piper_motion_examples

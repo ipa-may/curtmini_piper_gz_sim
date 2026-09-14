@@ -8,4 +8,10 @@ install(
   DESTINATION share/${PROJECT_NAME}
 )
 
+if(BUILD_TESTING)
+  find_package(launch_testing_ament_cmake REQUIRED)
+  # Readiness has an 80-second deadline; allow extra time for teardown.
+  add_launch_test(test/test_simulation_startup.py TIMEOUT 110)
+endif()
+
 ament_package()

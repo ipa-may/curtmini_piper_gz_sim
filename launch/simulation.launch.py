@@ -212,6 +212,7 @@ def _launch_setup(context):
             package='moveit_ros_move_group',
             executable='move_group',
             output='screen',
+            prefix=['xterm -e gdb -q -ex run --args'],
             parameters=[
                 moveit_config.to_dict(),
                 move_group_configuration,

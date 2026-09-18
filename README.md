@@ -80,7 +80,7 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -p stamped:=true
 ```sh
 ros2 topic list
 ```
-```txt
+```text
 /arm_controller/controller_state
 /arm_controller/joint_trajectory
 /arm_controller/transition_event

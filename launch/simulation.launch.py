@@ -34,6 +34,30 @@ def _three_values(context, name):
     return ' '.join(values)
 
 
+def _resolve_world(value, sim_share):
+    requested = Path(value).expanduser()
+
+    if requested.is_absolute() or requested.parent != Path('.'):
+        resolved = requested.resolve()
+        if resolved.is_file():
+            return str(resolved)
+        raise RuntimeError(f'Gazebo world file does not exist: {resolved}')
+
+    filename = requested
+    if not filename.suffix:
+        filename = filename.with_suffix('.sdf')
+    resolved = sim_share / 'worlds' / filename
+    if resolved.is_file():
+        return str(resolved)
+
+    available = ', '.join(
+        path.stem for path in sorted((sim_share / 'worlds').glob('*.sdf'))
+    )
+    raise RuntimeError(
+        f'Unknown packaged world {value!r}. Available worlds: {available}'
+    )
+
+
 def _build_descriptions(context, sim_share):
     description_share = Path(
         get_package_share_directory('curtmini_piper_description')
@@ -42,6 +66,9 @@ def _build_descriptions(context, sim_share):
         'simulation': 'True',
         'use_sim_time': 'True',
         'use_simplified_collision': 'True',
+        'use_hokuyo': (
+            'True' if _as_bool(context, 'use_hokuyo') else 'False'
+        ),
         'gazebo_controllers': str(
             sim_share / 'config' / 'simulation_controllers.yaml'
         ),
@@ -50,13 +77,15 @@ def _build_descriptions(context, sim_share):
         'arm_mount_rpy': _three_values(context, 'arm_mount_rpy'),
         'tcp_offset_xyz': _three_values(context, 'tcp_offset_xyz'),
         'tcp_offset_rpy': _three_values(context, 'tcp_offset_rpy'),
+        'hokuyo_mount_xyz': _three_values(context, 'hokuyo_mount_xyz'),
+        'hokuyo_mount_rpy': _three_values(context, 'hokuyo_mount_rpy'),
     }
 
     full_description = xacro.process_file(
         str(
-            description_share
+            sim_share
             / 'urdf'
-            / 'curtmini_piper.urdf.xacro'
+            / 'curtmini_piper_gz.urdf.xacro'
         ),
         mappings=mappings,
     ).toxml()
@@ -118,13 +147,18 @@ def _launch_setup(context):
     agx_urdf_share = Path(
         get_package_share_directory('agx_arm_urdf')
     )
+    neo_worlds_share = Path(
+        get_package_share_directory('neo_gz_worlds')
+    )
     ros_gz_share = Path(get_package_share_directory('ros_gz_sim'))
 
     full_description, moveit_config = _build_descriptions(
         context, sim_share
     )
 
-    world = LaunchConfiguration('world').perform(context)
+    world = _resolve_world(
+        LaunchConfiguration('world').perform(context), sim_share
+    )
     gz_args = []
     if not _as_bool(context, 'paused'):
         gz_args.append('-r')
@@ -151,6 +185,10 @@ def _launch_setup(context):
         AppendEnvironmentVariable(
             'GZ_SIM_RESOURCE_PATH',
             str(agx_urdf_share.parent),
+        ),
+        AppendEnvironmentVariable(
+            'GZ_SIM_RESOURCE_PATH',
+            str(neo_worlds_share / 'models'),
         ),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
@@ -277,10 +315,11 @@ def generate_launch_description():
         [
             DeclareLaunchArgument(
                 'world',
-                default_value=str(
-                    sim_share / 'worlds' / 'curtmini_piper.sdf'
+                default_value='curtmini_piper',
+                description=(
+                    'Packaged world name, with optional .sdf extension, or '
+                    'a path to an external Gazebo world file.'
                 ),
-                description='Gazebo world file.',
             ),
             DeclareLaunchArgument(
                 'gui',
@@ -307,13 +346,19 @@ def generate_launch_description():
                 description='Start Curt Mini joystick teleoperation.',
             ),
             DeclareLaunchArgument(
+                'use_hokuyo',
+                default_value='true',
+                choices=['true', 'false'],
+                description='Add the Hokuyo UTM-30LX-EW simulation.',
+            ),
+            DeclareLaunchArgument(
                 'spawn_x',
                 default_value='0.0',
                 description='Initial robot x position.',
             ),
             DeclareLaunchArgument(
                 'spawn_y',
-                default_value='0.0',
+                default_value='-2.0',
                 description='Initial robot y position.',
             ),
             DeclareLaunchArgument(
@@ -345,6 +390,16 @@ def generate_launch_description():
                 'tcp_offset_rpy',
                 default_value='0 0 0',
                 description='TCP rotation from piper_link6.',
+            ),
+            DeclareLaunchArgument(
+                'hokuyo_mount_xyz',
+                default_value='0.25 0 0.20',
+                description='Hokuyo translation from Curt Mini chassis.',
+            ),
+            DeclareLaunchArgument(
+                'hokuyo_mount_rpy',
+                default_value='0 0 0',
+                description='Hokuyo rotation from Curt Mini chassis.',
             ),
             OpaqueFunction(function=_launch_setup),
         ]

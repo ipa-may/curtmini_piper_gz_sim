@@ -64,15 +64,37 @@ Joystick teleoperation is disabled by default. Enable it with
 bringup.
 
 
-## Controlling the base using keyboard teleop
+## Teleoperate the simulated robot with a keyboard
 
-If you started the gz sim using `start_joystick:=true`, you should see a `/joy_teleop/joy` topic.
-
-Use the teleop_twist_keyboard to send velocity commands to the gazebo simulated curtmini:
+Start the robot in the mapping world:
 
 ```sh
-ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -p stamped:=true -p frame_id:=base_link -r cmd_vel:=/base_controller/cmd_vel
+ros2 launch curtmini_piper_gz_sim simulation.launch.py \
+  world:=curtmini_piper_map
 ```
+
+In a second terminal, activate the state broadcaster and mobile-base
+controller after the robot has spawned:
+
+```sh
+ros2 control set_controller_state joint_state_broadcaster active
+ros2 control set_controller_state base_controller active
+ros2 control list_controllers
+```
+
+`joint_state_broadcaster` and `base_controller` should both be `active`.
+
+In a third terminal, start keyboard teleoperation:
+
+```sh
+ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args \
+  -p stamped:=true \
+  -p frame_id:=base_link \
+  -r cmd_vel:=/base_controller/cmd_vel
+```
+
+Keep this terminal focused while driving. Use `i` and `,` to drive forward
+and backward, `j` and `l` to rotate, and `k` to stop.
 
 
 ## Available topics

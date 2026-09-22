@@ -19,7 +19,7 @@ import launch_testing.actions
 import rclpy
 from rclpy.qos import qos_profile_sensor_data
 from rosgraph_msgs.msg import Clock
-from sensor_msgs.msg import JointState
+from sensor_msgs.msg import JointState, LaserScan
 
 
 def generate_test_description():
@@ -35,8 +35,9 @@ def generate_test_description():
     for key in ('ROS_DISCOVERY_SERVER', 'ROS_SUPER_CLIENT',
                 'FASTRTPS_DEFAULT_PROFILES_FILE', 'FASTDDS_DEFAULT_PROFILES_FILE'):
         os.environ.pop(key, None)
-    # Gazebo's sensors system can initialize rendering even without a GUI.
-    os.environ['LIBGL_ALWAYS_SOFTWARE'] = '1'
+    # Gazebo's sensors system initializes rendering even without a GUI. Leave
+    # renderer selection to Ogre / Mesa; forcing software rendering crashes
+    # gpu_lidar initialization with some Mesa versions.
     os.environ['QT_QPA_PLATFORM'] = 'offscreen'
     share = Path(get_package_share_directory('curtmini_piper_gz_sim'))
     return LaunchDescription([
@@ -59,6 +60,7 @@ class TestSimulationStartup(unittest.TestCase):
         self.addCleanup(node.destroy_node)
         clocks = []
         joints = set()
+        scan_status = 'no scan received'
 
         def clock_received(msg):
             value = msg.clock.sec * 1_000_000_000 + msg.clock.nanosec
@@ -71,9 +73,19 @@ class TestSimulationStartup(unittest.TestCase):
             joints.clear()
             joints.update(msg.name)
 
+        def scan_received(msg):
+            nonlocal scan_status
+            scan_status = (
+                f'frame={msg.header.frame_id!r}, ranges={len(msg.ranges)}'
+            )
+            if msg.header.frame_id == 'hokuyo_link' and len(msg.ranges) == 1081:
+                scan_status = 'ready'
+
         node.create_subscription(Clock, '/clock', clock_received, qos_profile_sensor_data)
         node.create_subscription(
             JointState, '/joint_states', joints_received, qos_profile_sensor_data)
+        node.create_subscription(
+            LaserScan, '/scan', scan_received, qos_profile_sensor_data)
         client = node.create_client(ListControllers, '/controller_manager/list_controllers')
         expected_joints = {
             'front_left_motor', 'back_left_motor',
@@ -121,7 +133,7 @@ class TestSimulationStartup(unittest.TestCase):
                     model_output = 'gz model --list timed out'
                 next_model_check = time.monotonic() + 2.0
 
-            if (model_found and len(clocks) == 2
+            if (model_found and len(clocks) == 2 and scan_status == 'ready'
                     and expected_joints <= joints and expected_controllers <= active):
                 return
 
@@ -129,6 +141,7 @@ class TestSimulationStartup(unittest.TestCase):
             'Simulation was not ready within 80 seconds:\n'
             f'  robot present in Gazebo: {model_found}\n'
             f'  simulation clock advanced: {len(clocks) == 2}\n'
+            f'  lidar scan: {scan_status}\n'
             f'  missing joints: {sorted(expected_joints - joints)}\n'
             f'  inactive/missing controllers: {sorted(expected_controllers - active)}\n'
             f'  last controller query: {controller_status}\n'

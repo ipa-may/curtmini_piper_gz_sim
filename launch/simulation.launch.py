@@ -393,7 +393,7 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument(
                 'hokuyo_mount_xyz',
-                default_value='0.25 0 0.20',
+                default_value='0.25 0 0.35',
                 description='Hokuyo translation from Curt Mini chassis.',
             ),
             DeclareLaunchArgument(

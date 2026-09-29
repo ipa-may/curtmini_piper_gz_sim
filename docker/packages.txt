@@ -1,0 +1,2 @@
+ca-certificates
+python3-yaml

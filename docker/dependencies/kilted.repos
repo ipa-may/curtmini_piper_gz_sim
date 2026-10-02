@@ -6,7 +6,7 @@ repositories:
   curtmini_piper:
     type: git
     url: https://github.com/ipa-may/curtmini_piper.git
-    version: 3cd970ff19e7ac2488322684af76e1093b682e5d
+    version: fa5bfdce328d3a69bdc171eec0e19d9f27367bcc
   piper_driver/agx_arm_urdf:
     type: git
     url: https://github.com/ipa-may/agx_arm_urdf.git

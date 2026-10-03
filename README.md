@@ -52,6 +52,24 @@ base and Piper arm. It publishes simulation time on `/clock`, IMU data on
 `/imu/data`, wheel odometry on `/base_controller/odom`, and the combined robot
 state on `/joint_states`.
 
+Set the startup pose in `config/initial_state.yaml`: `base.x`, `base.y`, and
+`base.z` are metres, `base.orientation` is one rotation around Z in radians,
+and the six `arm.piper_joint*` values are radians. The launch validates every
+joint against the Piper's position limits before starting Gazebo. From the
+simulator repository root, pass the source file to a local ROS launch so edits
+take effect without rebuilding the package:
+
+```bash
+ros2 launch curtmini_piper_gz_sim simulation.launch.py \
+  initial_state_file:=$(pwd)/config/initial_state.yaml
+```
+
+The launch defaults to the installed copy of that file when no path is given.
+The Docker service bind-mounts the source directory over the installed copy,
+so editing the YAML and restarting `gz-sim` is enough to apply a new startup
+pose. Arm, TCP, and lidar mounts come from
+`curtmini_piper_description/config/geometry.yaml`.
+
 Run without Gazebo and RViz windows for headless testing:
 
 ```bash

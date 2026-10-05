@@ -27,7 +27,7 @@ def _as_bool(context, name):
     return LaunchConfiguration(name).perform(context).lower() == 'true'
 
 
-def _resolve_world(value, sim_share):
+def _resolve_world(value, sim_share, neo_worlds_share):
     requested = Path(value).expanduser()
 
     if requested.is_absolute() or requested.parent != Path('.'):
@@ -39,12 +39,18 @@ def _resolve_world(value, sim_share):
     filename = requested
     if not filename.suffix:
         filename = filename.with_suffix('.sdf')
-    resolved = sim_share / 'worlds' / filename
-    if resolved.is_file():
-        return str(resolved)
+    world_dirs = (sim_share / 'worlds', neo_worlds_share / 'worlds')
+    for world_dir in world_dirs:
+        resolved = world_dir / filename
+        if resolved.is_file():
+            return str(resolved)
 
     available = ', '.join(
-        path.stem for path in sorted((sim_share / 'worlds').glob('*.sdf'))
+        sorted({
+            path.stem
+            for world_dir in world_dirs
+            for path in world_dir.glob('*.sdf')
+        })
     )
     raise RuntimeError(
         f'Unknown packaged world {value!r}. Available worlds: {available}'
@@ -205,7 +211,9 @@ def _launch_setup(context):
     )
 
     world = _resolve_world(
-        LaunchConfiguration('world').perform(context), sim_share
+        LaunchConfiguration('world').perform(context),
+        sim_share,
+        neo_worlds_share,
     )
     gz_args = []
     if not _as_bool(context, 'paused'):
@@ -365,8 +373,8 @@ def generate_launch_description():
                 'world',
                 default_value='curtmini_piper',
                 description=(
-                    'Packaged world name, with optional .sdf extension, or '
-                    'a path to an external Gazebo world file.'
+                    'World name from this package or neo_gz_worlds, with '
+                    'optional .sdf extension, or a path to a Gazebo world file.'
                 ),
             ),
             DeclareLaunchArgument(

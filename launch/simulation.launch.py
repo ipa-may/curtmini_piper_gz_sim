@@ -1,3 +1,4 @@
+import math
 import os
 from pathlib import Path
 
@@ -15,26 +16,18 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node, SetRemap
 from moveit_configs_utils import MoveItConfigsBuilder
 import xacro
+import yaml
 
 
 ARM_PREFIX = 'piper_'
+ARM_JOINTS = tuple(f'{ARM_PREFIX}joint{i}' for i in range(1, 7))
 
 
 def _as_bool(context, name):
     return LaunchConfiguration(name).perform(context).lower() == 'true'
 
 
-def _three_values(context, name):
-    value = LaunchConfiguration(name).perform(context)
-    values = value.replace(',', ' ').split()
-    if len(values) != 3:
-        raise RuntimeError(
-            f'Launch argument {name} must contain exactly three values'
-        )
-    return ' '.join(values)
-
-
-def _resolve_world(value, sim_share):
+def _resolve_world(value, sim_share, neo_worlds_share):
     requested = Path(value).expanduser()
 
     if requested.is_absolute() or requested.parent != Path('.'):
@@ -46,19 +39,78 @@ def _resolve_world(value, sim_share):
     filename = requested
     if not filename.suffix:
         filename = filename.with_suffix('.sdf')
-    resolved = sim_share / 'worlds' / filename
-    if resolved.is_file():
-        return str(resolved)
+    world_dirs = (sim_share / 'worlds', neo_worlds_share / 'worlds')
+    for world_dir in world_dirs:
+        resolved = world_dir / filename
+        if resolved.is_file():
+            return str(resolved)
 
     available = ', '.join(
-        path.stem for path in sorted((sim_share / 'worlds').glob('*.sdf'))
+        sorted({
+            path.stem
+            for world_dir in world_dirs
+            for path in world_dir.glob('*.sdf')
+        })
     )
     raise RuntimeError(
         f'Unknown packaged world {value!r}. Available worlds: {available}'
     )
 
 
-def _build_descriptions(context, sim_share):
+def _require_keys(value, expected, label):
+    if not isinstance(value, dict):
+        raise RuntimeError(f'{label} must be a YAML mapping')
+    missing = set(expected) - set(value)
+    extra = set(value) - set(expected)
+    if missing or extra:
+        raise RuntimeError(
+            f'{label} has missing keys {sorted(missing)} and '
+            f'unknown keys {sorted(extra)}'
+        )
+
+
+def _finite_number(value, label):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise RuntimeError(f'{label} must be a number')
+    if not math.isfinite(value):
+        raise RuntimeError(f'{label} must be finite')
+    return float(value)
+
+
+def _load_initial_state(path):
+    config_path = Path(path).expanduser().resolve()
+    if not config_path.is_file():
+        raise RuntimeError(f'Initial state file does not exist: {config_path}')
+    with config_path.open(encoding='utf-8') as stream:
+        state = yaml.safe_load(stream)
+    _require_keys(state, ('base', 'arm'), str(config_path))
+    _require_keys(state['base'], ('x', 'y', 'z', 'orientation'), 'base')
+    _require_keys(state['arm'], ARM_JOINTS, 'arm')
+
+    base = {
+        name: _finite_number(state['base'][name], f'base.{name}')
+        for name in ('x', 'y', 'z', 'orientation')
+    }
+    limits_path = (
+        Path(get_package_share_directory('agx_arm_urdf'))
+        / 'piper' / 'config' / 'joint_position_limits.yaml'
+    )
+    with limits_path.open(encoding='utf-8') as stream:
+        limits = yaml.safe_load(stream)['joint_limits']
+    arm = {}
+    for index, joint in enumerate(ARM_JOINTS, start=1):
+        value = _finite_number(state['arm'][joint], f'arm.{joint}')
+        bounds = limits[f'joint{index}']
+        if not bounds['lower'] <= value <= bounds['upper']:
+            raise RuntimeError(
+                f'arm.{joint}={value} is outside the robot limits '
+                f"[{bounds['lower']}, {bounds['upper']}]"
+            )
+        arm[joint] = value
+    return {'base': base, 'arm': arm}
+
+
+def _build_descriptions(context, sim_share, initial_state):
     description_share = Path(
         get_package_share_directory('curtmini_piper_description')
     )
@@ -73,21 +125,20 @@ def _build_descriptions(context, sim_share):
             sim_share / 'config' / 'simulation_controllers.yaml'
         ),
         'arm_prefix': ARM_PREFIX,
-        'arm_mount_xyz': _three_values(context, 'arm_mount_xyz'),
-        'arm_mount_rpy': _three_values(context, 'arm_mount_rpy'),
-        'tcp_offset_xyz': _three_values(context, 'tcp_offset_xyz'),
-        'tcp_offset_rpy': _three_values(context, 'tcp_offset_rpy'),
-        'hokuyo_mount_xyz': _three_values(context, 'hokuyo_mount_xyz'),
-        'hokuyo_mount_rpy': _three_values(context, 'hokuyo_mount_rpy'),
     }
 
+    simulation_mappings = dict(mappings)
+    simulation_mappings.update({
+        f'{joint}_initial_value': str(value)
+        for joint, value in initial_state['arm'].items()
+    })
     full_description = xacro.process_file(
         str(
             sim_share
             / 'urdf'
             / 'curtmini_piper_gz.urdf.xacro'
         ),
-        mappings=mappings,
+        mappings=simulation_mappings,
     ).toxml()
 
     moveit_mappings = dict(mappings)
@@ -132,6 +183,10 @@ def _controller_spawner(name):
             '/controller_manager',
             '--controller-manager-timeout',
             '60',
+            '--switch-timeout',
+            '30',
+            '--service-call-timeout',
+            '40',
         ],
     )
 
@@ -152,12 +207,17 @@ def _launch_setup(context):
     )
     ros_gz_share = Path(get_package_share_directory('ros_gz_sim'))
 
+    initial_state = _load_initial_state(
+        LaunchConfiguration('initial_state_file').perform(context)
+    )
     full_description, moveit_config = _build_descriptions(
-        context, sim_share
+        context, sim_share, initial_state
     )
 
     world = _resolve_world(
-        LaunchConfiguration('world').perform(context), sim_share
+        LaunchConfiguration('world').perform(context),
+        sim_share,
+        neo_worlds_share,
     )
     gz_args = []
     if not _as_bool(context, 'paused'):
@@ -234,13 +294,13 @@ def _launch_setup(context):
                 '-topic',
                 'robot_description',
                 '-x',
-                LaunchConfiguration('spawn_x'),
+                str(initial_state['base']['x']),
                 '-y',
-                LaunchConfiguration('spawn_y'),
+                str(initial_state['base']['y']),
                 '-z',
-                LaunchConfiguration('spawn_z'),
+                str(initial_state['base']['z']),
                 '-Y',
-                LaunchConfiguration('spawn_yaw'),
+                str(initial_state['base']['orientation']),
             ],
         ),
         _controller_spawner('joint_state_broadcaster'),
@@ -317,8 +377,8 @@ def generate_launch_description():
                 'world',
                 default_value='curtmini_piper',
                 description=(
-                    'Packaged world name, with optional .sdf extension, or '
-                    'a path to an external Gazebo world file.'
+                    'World name from this package or neo_gz_worlds, with '
+                    'optional .sdf extension, or a path to a Gazebo world file.'
                 ),
             ),
             DeclareLaunchArgument(
@@ -352,54 +412,14 @@ def generate_launch_description():
                 description='Add the Hokuyo UTM-30LX-EW simulation.',
             ),
             DeclareLaunchArgument(
-                'spawn_x',
-                default_value='0.0',
-                description='Initial robot x position.',
-            ),
-            DeclareLaunchArgument(
-                'spawn_y',
-                default_value='-2.0',
-                description='Initial robot y position.',
-            ),
-            DeclareLaunchArgument(
-                'spawn_z',
-                default_value='0.16',
-                description='Initial robot z position.',
-            ),
-            DeclareLaunchArgument(
-                'spawn_yaw',
-                default_value='0.0',
-                description='Initial robot yaw.',
-            ),
-            DeclareLaunchArgument(
-                'arm_mount_xyz',
-                default_value='0 0 0.18',
-                description='Piper mount translation from Curt Mini chassis.',
-            ),
-            DeclareLaunchArgument(
-                'arm_mount_rpy',
-                default_value='0 0 0',
-                description='Piper mount rotation from Curt Mini chassis.',
-            ),
-            DeclareLaunchArgument(
-                'tcp_offset_xyz',
-                default_value='0 0 0',
-                description='TCP translation from piper_link6.',
-            ),
-            DeclareLaunchArgument(
-                'tcp_offset_rpy',
-                default_value='0 0 0',
-                description='TCP rotation from piper_link6.',
-            ),
-            DeclareLaunchArgument(
-                'hokuyo_mount_xyz',
-                default_value='0.25 0 0.35',
-                description='Hokuyo translation from Curt Mini chassis.',
-            ),
-            DeclareLaunchArgument(
-                'hokuyo_mount_rpy',
-                default_value='0 0 0',
-                description='Hokuyo rotation from Curt Mini chassis.',
+                'initial_state_file',
+                default_value=str(
+                    sim_share / 'config' / 'initial_state.yaml'
+                ),
+                description=(
+                    'YAML file with the base x/y/z/orientation and six Piper '
+                    'joint positions used at simulation startup.'
+                ),
             ),
             OpaqueFunction(function=_launch_setup),
         ]

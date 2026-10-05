@@ -25,6 +25,19 @@ services:
     init: true
     environment:
       <<: *ros-environment
+    volumes:
+      - type: bind
+        source: ../config
+        target: /opt/ws/install/share/curtmini_piper_gz_sim/config
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${CURTMINI_PIPER_DESCRIPTION_CONFIG_DIR:-../../../curtmini_piper/curtmini_piper_description/config}
+        target: /opt/ws/install/share/curtmini_piper_description/config
+        read_only: true
+        bind:
+          create_host_path: false
     command:
       - ros2
       - launch
@@ -34,12 +47,4 @@ services:
       - use_rviz:=false
       - world:=${SIM_WORLD:-curtmini_piper}
       - use_hokuyo:=${SIM_USE_HOKUYO:-true}
-      - spawn_x:=${SIM_SPAWN_X:-0.0}
-      - spawn_y:=${SIM_SPAWN_Y:--2.0}
-      - spawn_z:=${SIM_SPAWN_Z:-0.16}
-      - spawn_yaw:=${SIM_SPAWN_YAW:-0.0}
-      - arm_mount_xyz:=${ARM_MOUNT_XYZ:-0 0 0.18}
-      - arm_mount_rpy:=${ARM_MOUNT_RPY:-0 0 0}
-      - tcp_offset_xyz:=${TCP_OFFSET_XYZ:-0 0 0}
-      - tcp_offset_rpy:=${TCP_OFFSET_RPY:-0 0 0}
     stop_grace_period: 20s

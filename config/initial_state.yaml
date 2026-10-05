@@ -1,0 +1,12 @@
+base:
+  x: 0.0
+  y: -2.0
+  z: 0.16
+  orientation: 0.0
+arm:
+  piper_joint1: 0.0
+  piper_joint2: 0.1
+  piper_joint3: -0.1
+  piper_joint4: 0.0
+  piper_joint5: 0.0
+  piper_joint6: -1.95

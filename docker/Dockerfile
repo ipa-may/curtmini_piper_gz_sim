@@ -72,10 +72,6 @@ RUN apt-get update \
 
 FROM dependencies AS builder
 
-# Gazebo may need more than the default five seconds to start physics updates.
-RUN sed -i "/'--controller-manager-timeout',/i\            '--switch-timeout', '60'," \
-      /opt/ws/src/curtmini_piper_gz_sim/launch/simulation.launch.py
-
 RUN source "/opt/ros/${ROS_DISTRO}/setup.bash" \
     && colcon build \
       --merge-install \

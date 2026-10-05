@@ -132,9 +132,10 @@ ros2 control list_controllers
 ```
 
 The launch attempts to activate `joint_state_broadcaster`, `base_controller`,
-and `arm_controller`. The host launch uses the spawner's five-second switch
-timeout; the Docker build extends it to 60 seconds. If the state broadcaster
-is still `inactive` after a startup timeout, retry its activation:
+and `arm_controller`. It allows 30 seconds for a controller switch and 40
+seconds for its service response on the host, in Docker, and in CI. If the
+state broadcaster is still `inactive` after a startup timeout, retry its
+activation:
 
 ```sh
 ros2 control switch_controllers --activate joint_state_broadcaster

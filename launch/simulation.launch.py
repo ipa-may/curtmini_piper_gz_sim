@@ -183,6 +183,10 @@ def _controller_spawner(name):
             '/controller_manager',
             '--controller-manager-timeout',
             '60',
+            '--switch-timeout',
+            '30',
+            '--service-call-timeout',
+            '40',
         ],
     )
 

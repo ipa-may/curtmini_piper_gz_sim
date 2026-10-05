@@ -172,13 +172,13 @@ def _build_descriptions(context, sim_share, initial_state):
     return full_description, moveit_config
 
 
-def _controller_spawner(name):
+def _controller_spawner(*controller_names):
     return Node(
         package='controller_manager',
         executable='spawner',
         output='screen',
         arguments=[
-            name,
+            *controller_names,
             '--controller-manager',
             '/controller_manager',
             '--controller-manager-timeout',
@@ -303,9 +303,11 @@ def _launch_setup(context):
                 str(initial_state['base']['orientation']),
             ],
         ),
-        _controller_spawner('joint_state_broadcaster'),
-        _controller_spawner('base_controller'),
-        _controller_spawner('arm_controller'),
+        _controller_spawner(
+            'joint_state_broadcaster',
+            'base_controller',
+            'arm_controller',
+        ),
         Node(
             package='moveit_ros_move_group',
             executable='move_group',

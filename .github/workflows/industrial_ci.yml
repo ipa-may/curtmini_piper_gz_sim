@@ -24,7 +24,7 @@ jobs:
           # before rosdep resolves the upstream workspace dependencies.
           UPSTREAM_WORKSPACE: >-
             dependencies.repos
-            -curt_mini/curt_mini
+            -curt_mini/curt_mini_bringup
             -curt_mini/ipa_ros2_control
             -curtmini_piper/curtmini_piper_bringup
             -curtmini_piper/curtmini_piper_motion_examples

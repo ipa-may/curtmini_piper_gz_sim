@@ -34,7 +34,7 @@ source install/setup.bash
 
 Upstream ROS packages from `dependencies.repos` include:
 
-- [curt_mini](https://github.com/ipa-may/curt_mini/tree/main/curt_mini)
+- [curt_mini](https://github.com/ipa-may/curt_mini)
   - curt_mini_description
   - curt_mini_teleop
 - [curtmini_piper](https://github.com/ipa-may/curtmini_piper)

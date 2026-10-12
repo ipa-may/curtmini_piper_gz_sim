@@ -76,13 +76,12 @@ The Docker service bind-mounts the simulator's source `config` directory over
 the installed copy, so editing the YAML and restarting `gz-sim` applies a new
 startup pose.
 
-Arm, TCP, and lidar mounts belong to `curtmini_piper_description`. Revision
-`23323e3` and later of that repository read them from
-`curtmini_piper_description/config/geometry.yaml`. The current
-`dependencies.repos` and `docker/dependencies/kilted.repos` pin an older
-revision without that file; a fresh import or Docker image therefore uses
-the mount defaults in that revision's Xacros. The Docker bind mount of the
-description's `config` directory does not change those older Xacro defaults.
+Arm, TCP, and lidar mounts are read from
+`curtmini_piper_description/config/geometry.yaml`. The dependency manifest tracks
+the robot repository on `main`. Older cached Docker images may still contain
+a description that ignores this YAML; refresh their dependencies or use the
+local workspace overlay. With a YAML-aware description, the bind-mounted config
+applies after restarting Gazebo and its clients.
 
 `config/moveit_controllers.yaml` sets MoveIt's
 `trajectory_execution.allowed_start_tolerance` to `0.0`. This skips MoveIt's

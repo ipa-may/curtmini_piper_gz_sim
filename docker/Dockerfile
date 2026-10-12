@@ -45,11 +45,8 @@ RUN apt-get update \
 WORKDIR /opt/ws
 
 COPY dependencies.repos /tmp/dependencies.repos
-COPY docker/dependencies/ /tmp/dependencies/
-RUN manifest=/tmp/dependencies.repos \
-    && if [[ -f "/tmp/dependencies/${ROS_DISTRO}.repos" ]]; then manifest="/tmp/dependencies/${ROS_DISTRO}.repos"; fi \
-    && mkdir -p /opt/ws/src \
-    && vcs import --recursive /opt/ws/src < "${manifest}"
+RUN mkdir -p /opt/ws/src \
+    && vcs import --recursive /opt/ws/src < /tmp/dependencies.repos
 
 COPY . /opt/ws/src/curtmini_piper_gz_sim
 

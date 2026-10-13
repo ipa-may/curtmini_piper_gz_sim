@@ -2,6 +2,43 @@
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="curtmini_piper">
   <!-- The physical robot and sensor frames remain owned by the description package. -->
   <xacro:include filename="$(find curtmini_piper_description)/urdf/curtmini_piper.urdf.xacro" />
+  <xacro:arg name="use_cameras" default="True" />
+
+  <xacro:macro name="sim_d435i" params="name">
+    <!-- Preserve the body link so Gazebo can attach rendering and IMU sensors. -->
+    <gazebo reference="${name}_body_joint">
+      <preserveFixedJoint>true</preserveFixedJoint>
+    </gazebo>
+    <gazebo reference="${name}_body_link">
+      <sensor name="${name}_rgbd" type="rgbd_camera">
+        <always_on>true</always_on>
+        <update_rate>15</update_rate>
+        <topic>/${name}</topic>
+        <gz_frame_id>${name}_color_optical_frame</gz_frame_id>
+        <camera>
+          <horizontal_fov>1.20</horizontal_fov>
+          <image>
+            <width>640</width>
+            <height>480</height>
+            <format>R8G8B8</format>
+          </image>
+          <clip><near>0.1</near><far>10.0</far></clip>
+        </camera>
+      </sensor>
+      <sensor name="${name}_imu" type="imu">
+        <always_on>true</always_on>
+        <update_rate>100</update_rate>
+        <pose>0 0 0 -1.5707963267948966 0 -1.5707963267948966</pose>
+        <topic>/${name}/imu</topic>
+        <gz_frame_id>${name}_imu_optical_frame</gz_frame_id>
+      </sensor>
+    </gazebo>
+  </xacro:macro>
+
+  <xacro:if value="$(arg use_cameras)">
+    <xacro:sim_d435i name="base_camera" />
+    <xacro:sim_d435i name="tool_camera" />
+  </xacro:if>
 
   <!-- Keep the fixed sensor link in the generated SDF instead of lumping it. -->
   <xacro:if value="$(arg use_hokuyo)">

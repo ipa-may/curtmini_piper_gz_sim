@@ -6,6 +6,7 @@ find_package(ament_cmake REQUIRED)
 install(
   DIRECTORY config launch urdf worlds
   DESTINATION share/${PROJECT_NAME}
+  PATTERN "__pycache__" EXCLUDE
 )
 
 if(BUILD_TESTING)

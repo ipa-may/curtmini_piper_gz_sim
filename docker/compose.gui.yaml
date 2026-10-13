@@ -16,3 +16,4 @@ services:
       - use_rviz:=false
       - world:=${SIM_WORLD:-curtmini_piper}
       - use_hokuyo:=${SIM_USE_HOKUYO:-true}
+      - use_cameras:=${SIM_USE_CAMERAS:-true}

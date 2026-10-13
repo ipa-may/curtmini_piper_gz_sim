@@ -19,7 +19,7 @@ import launch_testing.actions
 import rclpy
 from rclpy.qos import qos_profile_sensor_data
 from rosgraph_msgs.msg import Clock
-from sensor_msgs.msg import JointState, LaserScan
+from sensor_msgs.msg import CameraInfo, Image, Imu, JointState, LaserScan
 
 
 def generate_test_description():
@@ -61,6 +61,7 @@ class TestSimulationStartup(unittest.TestCase):
         clocks = []
         joints = set()
         scan_status = 'no scan received'
+        camera_ready = set()
 
         def clock_received(msg):
             value = msg.clock.sec * 1_000_000_000 + msg.clock.nanosec
@@ -86,6 +87,31 @@ class TestSimulationStartup(unittest.TestCase):
             JointState, '/joint_states', joints_received, qos_profile_sensor_data)
         node.create_subscription(
             LaserScan, '/scan', scan_received, qos_profile_sensor_data)
+        for camera in ('base_camera', 'tool_camera'):
+            for stream in ('color', 'depth'):
+                topic = (f'/{camera}/color/image_raw' if stream == 'color'
+                         else f'/{camera}/depth/image_rect_raw')
+                node.create_subscription(
+                    Image, topic,
+                    lambda msg, key=(camera, stream): camera_ready.add(key)
+                    if msg.width == 640 and msg.height == 480
+                    and msg.header.frame_id == f'{key[0]}_color_optical_frame'
+                    else None,
+                    qos_profile_sensor_data)
+                node.create_subscription(
+                    CameraInfo, f'/{camera}/{stream}/camera_info',
+                    lambda msg, key=(camera, stream):
+                    camera_ready.add((key[0], f'{key[1]}_info'))
+                    if msg.width == 640 and msg.height == 480 and msg.k[0] > 0
+                    and msg.header.frame_id == f'{key[0]}_color_optical_frame'
+                    else None,
+                    qos_profile_sensor_data)
+            node.create_subscription(
+                Imu, f'/{camera}/imu',
+                lambda msg, key=camera: camera_ready.add((key, 'imu'))
+                if msg.header.frame_id == f'{key}_imu_optical_frame'
+                else None,
+                qos_profile_sensor_data)
         client = node.create_client(ListControllers, '/controller_manager/list_controllers')
         expected_joints = {
             'front_left_motor', 'back_left_motor',
@@ -94,6 +120,11 @@ class TestSimulationStartup(unittest.TestCase):
         }
         expected_controllers = {
             'joint_state_broadcaster', 'base_controller', 'arm_controller',
+        }
+        expected_cameras = {
+            (camera, stream)
+            for camera in ('base_camera', 'tool_camera')
+            for stream in ('color', 'depth', 'color_info', 'depth_info', 'imu')
         }
         active = set()
         future = None
@@ -134,7 +165,8 @@ class TestSimulationStartup(unittest.TestCase):
                 next_model_check = time.monotonic() + 2.0
 
             if (model_found and len(clocks) == 2 and scan_status == 'ready'
-                    and expected_joints <= joints and expected_controllers <= active):
+                    and expected_joints <= joints and expected_controllers <= active
+                    and expected_cameras <= camera_ready):
                 return
 
         self.fail(
@@ -142,6 +174,7 @@ class TestSimulationStartup(unittest.TestCase):
             f'  robot present in Gazebo: {model_found}\n'
             f'  simulation clock advanced: {len(clocks) == 2}\n'
             f'  lidar scan: {scan_status}\n'
+            f'  missing camera streams: {sorted(expected_cameras - camera_ready)}\n'
             f'  missing joints: {sorted(expected_joints - joints)}\n'
             f'  inactive/missing controllers: {sorted(expected_controllers - active)}\n'
             f'  last controller query: {controller_status}\n'

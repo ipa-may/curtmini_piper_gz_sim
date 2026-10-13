@@ -76,12 +76,13 @@ The Docker service bind-mounts the simulator's source `config` directory over
 the installed copy, so editing the YAML and restarting `gz-sim` applies a new
 startup pose.
 
-Arm, TCP, and lidar mounts are read from
-`curtmini_piper_description/config/geometry.yaml`. The dependency manifest tracks
-the robot repository on `main`. Older cached Docker images may still contain
-a description that ignores this YAML; refresh their dependencies or use the
-local workspace overlay. With a YAML-aware description, the bind-mounted config
-applies after restarting Gazebo and its clients.
+Arm, TCP, lidar, and nominal camera body mounts are read from
+`curtmini_piper_description/config/geometry.yaml`. The regular Docker build
+copies the local robot description and MoveIt configuration through
+`CURTMINI_PIPER_BUILD_SOURCE`; rebuild the Gazebo image after changing their
+URDF files. The bind-mounted geometry YAML applies after restarting Gazebo and
+its clients. Gazebo publishes the simulated cameras' mount transforms from
+that YAML.
 
 `config/moveit_controllers.yaml` sets MoveIt's
 `trajectory_execution.allowed_start_tolerance` to `0.0`. This skips MoveIt's
@@ -113,6 +114,30 @@ lidar and IMU data may be unavailable in them.
 
 Joystick teleoperation is disabled by default. Enable it with
 `start_joystick:=true`.
+
+## Simulated D435i-like cameras
+
+The launch enables two RGBD and IMU sensors by default. The base camera is
+below the Hokuyo and the tool camera moves with `piper_tcp_link`. Their nominal
+poses come from `curtmini_piper_description/config/geometry.yaml`. Gazebo uses
+those poses to mount the sensors, while separate static TF publishers attach
+`base_camera_link` to `chassis` and `tool_camera_link` to `piper_tcp_link`.
+Camera body visuals appear in Gazebo and in the MoveIt RViz robot model.
+
+For both cameras, color images use `/<name>/color/image_raw`, depth images use
+`/<name>/depth/image_rect_raw`, camera calibration uses
+`/<name>/color/camera_info` and `/<name>/depth/camera_info`, and IMU samples
+use `/<name>/imu`. The names are `base_camera` and `tool_camera`. The simulated
+RGBD sensor shares one calibration for color and depth; this is an approximation
+of a D435i, not a replica of its stereo pipeline. The RViz configuration shows
+both color and depth views and the TF tree. Use `use_cameras:=false` to turn off
+the simulated sensors and their TF publishers.
+
+To run without a Gazebo window but with RViz:
+
+```bash
+ros2 launch curtmini_piper_gz_sim simulation.launch.py gui:=false
+```
 
 ## Teleoperate the simulated robot with a keyboard
 

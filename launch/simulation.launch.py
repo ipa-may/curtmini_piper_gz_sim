@@ -21,6 +21,10 @@ import yaml
 
 ARM_PREFIX = 'piper_'
 ARM_JOINTS = tuple(f'{ARM_PREFIX}joint{i}' for i in range(1, 7))
+CAMERA_PARENTS = {
+    'base_camera': 'chassis',
+    'tool_camera': 'piper_tcp_link',
+}
 
 
 def _as_bool(context, name):
@@ -110,6 +114,55 @@ def _load_initial_state(path):
     return {'base': base, 'arm': arm}
 
 
+def _camera_mount_actions(description_share):
+    geometry_path = description_share / 'config' / 'geometry.yaml'
+    with geometry_path.open(encoding='utf-8') as stream:
+        geometry = yaml.safe_load(stream)
+
+    actions = []
+    for name, parent in CAMERA_PARENTS.items():
+        mount = geometry[f'{name}_mount']
+        position = mount['position']
+        rotation = mount['rotation']
+        actions.append(
+            Node(
+                package='tf2_ros',
+                executable='static_transform_publisher',
+                name=f'{name}_mount_tf',
+                arguments=[
+                    '--x', str(_finite_number(position['x'], f'{name}.x')),
+                    '--y', str(_finite_number(position['y'], f'{name}.y')),
+                    '--z', str(_finite_number(position['z'], f'{name}.z')),
+                    '--roll', str(_finite_number(rotation['r'], f'{name}.r')),
+                    '--pitch', str(_finite_number(rotation['p'], f'{name}.p')),
+                    '--yaw', str(_finite_number(rotation['y'], f'{name}.y')),
+                    '--frame-id', parent,
+                    '--child-frame-id', f'{name}_link',
+                ],
+                parameters=[{'use_sim_time': True}],
+            )
+        )
+        # Gazebo renders along +X. ROS camera and IMU images use +Z optical.
+        for suffix in ('color', 'imu'):
+            actions.append(
+                Node(
+                    package='tf2_ros',
+                    executable='static_transform_publisher',
+                    name=f'{name}_{suffix}_optical_tf',
+                    arguments=[
+                        '--x', '0', '--y', '0', '--z', '0',
+                        '--roll', str(-math.pi / 2),
+                        '--pitch', '0',
+                        '--yaw', str(-math.pi / 2),
+                        '--frame-id', f'{name}_link',
+                        '--child-frame-id', f'{name}_{suffix}_optical_frame',
+                    ],
+                    parameters=[{'use_sim_time': True}],
+                )
+            )
+    return actions
+
+
 def _build_descriptions(context, sim_share, initial_state):
     description_share = Path(
         get_package_share_directory('curtmini_piper_description')
@@ -120,6 +173,9 @@ def _build_descriptions(context, sim_share, initial_state):
         'use_simplified_collision': 'True',
         'use_hokuyo': (
             'True' if _as_bool(context, 'use_hokuyo') else 'False'
+        ),
+        'use_cameras': (
+            'True' if _as_bool(context, 'use_cameras') else 'False'
         ),
         'gazebo_controllers': str(
             sim_share / 'config' / 'simulation_controllers.yaml'
@@ -323,6 +379,11 @@ def _launch_setup(context):
         ),
     ]
 
+    if _as_bool(context, 'use_cameras'):
+        actions.extend(_camera_mount_actions(Path(
+            get_package_share_directory('curtmini_piper_description')
+        )))
+
     if _as_bool(context, 'start_joystick'):
         actions.append(
             GroupAction(
@@ -412,6 +473,12 @@ def generate_launch_description():
                 default_value='true',
                 choices=['true', 'false'],
                 description='Add the Hokuyo UTM-30LX-EW simulation.',
+            ),
+            DeclareLaunchArgument(
+                'use_cameras',
+                default_value='true',
+                choices=['true', 'false'],
+                description='Add the two simulated D435i-like RGBD and IMU sensors.',
             ),
             DeclareLaunchArgument(
                 'initial_state_file',

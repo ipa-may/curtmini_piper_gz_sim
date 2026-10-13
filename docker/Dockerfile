@@ -48,6 +48,11 @@ COPY dependencies.repos /tmp/dependencies.repos
 RUN mkdir -p /opt/ws/src \
     && vcs import --recursive /opt/ws/src < /tmp/dependencies.repos
 
+# Use the local robot description and MoveIt configuration with this simulator.
+# Both contain the camera body links referenced by the Gazebo sensor model.
+COPY --from=robot_source curtmini_piper_description /opt/ws/src/curtmini_piper/curtmini_piper_description
+COPY --from=robot_source curtmini_piper_moveit_config /opt/ws/src/curtmini_piper/curtmini_piper_moveit_config
+
 COPY . /opt/ws/src/curtmini_piper_gz_sim
 
 RUN apt-get update \

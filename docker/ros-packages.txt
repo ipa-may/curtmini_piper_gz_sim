@@ -12,5 +12,6 @@ ros2-controllers
 robot-state-publisher
 rviz2
 teleop-twist-joy
+tf2-ros
 twist-mux
 xacro

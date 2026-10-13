@@ -72,25 +72,24 @@ ros2 launch curtmini_piper_gz_sim simulation.launch.py \
 ```
 
 The launch defaults to the installed copy of that file when no path is given.
-The Docker service bind-mounts the simulator's source `config` directory over
-the installed copy, so editing the YAML and restarting `gz-sim` applies a new
-startup pose.
+The Docker service bind-mounts this YAML file over the installed copy, so
+editing it and restarting `gz-sim` applies a new startup pose. Bridge and
+controller YAML files come from the upstream simulator image.
 
 Arm, TCP, lidar, and nominal camera body mounts are read from
 `curtmini_piper_description/config/geometry.yaml`. The regular Docker build
-copies the local robot description and MoveIt configuration through
-`CURTMINI_PIPER_BUILD_SOURCE`; rebuild the Gazebo image after changing their
-URDF files. The bind-mounted geometry YAML applies after restarting Gazebo and
-its clients. Gazebo publishes the simulated cameras' mount transforms from
-that YAML.
+uses upstream `main` for the simulator and robot code. The local geometry YAML
+is bind-mounted, so its mount values apply after restarting Gazebo and its
+clients. Gazebo publishes the simulated cameras' mount transforms from that
+YAML. Use the workspace overlay to build local URDF or simulator code changes.
 
 `config/moveit_controllers.yaml` sets MoveIt's
 `trajectory_execution.allowed_start_tolerance` to `0.0`. This skips MoveIt's
 check that a trajectory starts at the current joint positions. Keep the
 `joint_state_broadcaster` active so MoveIt receives joint states for planning.
 For a host installation, rebuild this package after changing the controller
-YAML; Docker bind-mounts the simulator's `config` directory, so a service
-restart applies that YAML there.
+YAML. Regular Docker builds use the upstream copy; use the workspace overlay
+to test a local controller YAML change.
 
 Run without Gazebo and RViz windows for headless testing:
 

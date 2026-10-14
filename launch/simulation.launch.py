@@ -208,7 +208,7 @@ def _build_descriptions(context, sim_share, initial_state):
             file_path=str(
                 description_share
                 / 'urdf'
-                / 'curtmini_piper_moveit.urdf.xacro'
+                / 'curtmini_piper.urdf.xacro'
             ),
             mappings=moveit_mappings,
         )

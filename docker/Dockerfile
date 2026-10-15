@@ -73,14 +73,7 @@ RUN source "/opt/ros/${ROS_DISTRO}/setup.bash" \
     && colcon build \
       --merge-install \
       --cmake-args -DCMAKE_BUILD_TYPE=Release \
-      --packages-select \
-        agx_arm_urdf \
-        curt_mini_description \
-        curt_mini_teleop \
-        curtmini_piper_description \
-        curtmini_piper_moveit_config \
-        neo_gz_worlds \
-        curtmini_piper_gz_sim
+      --packages-up-to curtmini_piper_gz_sim
 
 FROM builder AS test
 

@@ -1,11 +1,8 @@
-import math
-import os
 from pathlib import Path
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import (
-    AppendEnvironmentVariable,
     DeclareLaunchArgument,
     GroupAction,
     IncludeLaunchDescription,
@@ -13,376 +10,96 @@ from launch.actions import (
 )
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
-from launch_ros.actions import Node, SetRemap
-from moveit_configs_utils import MoveItConfigsBuilder
-import xacro
-import yaml
+from launch_ros.actions import SetRemap
 
-
-ARM_PREFIX = 'piper_'
-ARM_JOINTS = tuple(f'{ARM_PREFIX}joint{i}' for i in range(1, 7))
-CAMERA_PARENTS = {
-    'base_camera': 'chassis',
-    'tool_camera': 'piper_tcp_link',
-}
+from curtmini_piper_gz_sim.apriltags import apriltag_actions
+from curtmini_piper_gz_sim.cameras import camera_mount_actions
+from curtmini_piper_gz_sim.gazebo import (
+    bridge_action,
+    gazebo_start_actions,
+    resolve_world,
+)
+from curtmini_piper_gz_sim.moveit import (
+    build_moveit_config,
+    rviz_action,
+)
+from curtmini_piper_gz_sim.robot import (
+    controller_spawner_action,
+    load_initial_state,
+    robot_mappings,
+    robot_spawn_action,
+    robot_state_publisher_action,
+    simulation_description,
+)
 
 
 def _as_bool(context, name):
     return LaunchConfiguration(name).perform(context).lower() == 'true'
 
 
-def _resolve_world(value, sim_share, neo_worlds_share):
-    requested = Path(value).expanduser()
-
-    if requested.is_absolute() or requested.parent != Path('.'):
-        resolved = requested.resolve()
-        if resolved.is_file():
-            return str(resolved)
-        raise RuntimeError(f'Gazebo world file does not exist: {resolved}')
-
-    filename = requested
-    if not filename.suffix:
-        filename = filename.with_suffix('.sdf')
-    world_dirs = (sim_share / 'worlds', neo_worlds_share / 'worlds')
-    for world_dir in world_dirs:
-        resolved = world_dir / filename
-        if resolved.is_file():
-            return str(resolved)
-
-    available = ', '.join(
-        sorted({
-            path.stem
-            for world_dir in world_dirs
-            for path in world_dir.glob('*.sdf')
-        })
-    )
-    raise RuntimeError(
-        f'Unknown packaged world {value!r}. Available worlds: {available}'
-    )
-
-
-def _require_keys(value, expected, label):
-    if not isinstance(value, dict):
-        raise RuntimeError(f'{label} must be a YAML mapping')
-    missing = set(expected) - set(value)
-    extra = set(value) - set(expected)
-    if missing or extra:
-        raise RuntimeError(
-            f'{label} has missing keys {sorted(missing)} and '
-            f'unknown keys {sorted(extra)}'
-        )
-
-
-def _finite_number(value, label):
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise RuntimeError(f'{label} must be a number')
-    if not math.isfinite(value):
-        raise RuntimeError(f'{label} must be finite')
-    return float(value)
-
-
-def _load_initial_state(path):
-    config_path = Path(path).expanduser().resolve()
-    if not config_path.is_file():
-        raise RuntimeError(f'Initial state file does not exist: {config_path}')
-    with config_path.open(encoding='utf-8') as stream:
-        state = yaml.safe_load(stream)
-    _require_keys(state, ('base', 'arm'), str(config_path))
-    _require_keys(state['base'], ('x', 'y', 'z', 'orientation'), 'base')
-    _require_keys(state['arm'], ARM_JOINTS, 'arm')
-
-    base = {
-        name: _finite_number(state['base'][name], f'base.{name}')
-        for name in ('x', 'y', 'z', 'orientation')
-    }
-    limits_path = (
-        Path(get_package_share_directory('agx_arm_urdf'))
-        / 'piper' / 'config' / 'joint_position_limits.yaml'
-    )
-    with limits_path.open(encoding='utf-8') as stream:
-        limits = yaml.safe_load(stream)['joint_limits']
-    arm = {}
-    for index, joint in enumerate(ARM_JOINTS, start=1):
-        value = _finite_number(state['arm'][joint], f'arm.{joint}')
-        bounds = limits[f'joint{index}']
-        if not bounds['lower'] <= value <= bounds['upper']:
-            raise RuntimeError(
-                f'arm.{joint}={value} is outside the robot limits '
-                f"[{bounds['lower']}, {bounds['upper']}]"
-            )
-        arm[joint] = value
-    return {'base': base, 'arm': arm}
-
-
-def _camera_mount_actions(description_share):
-    geometry_path = description_share / 'config' / 'geometry.yaml'
-    with geometry_path.open(encoding='utf-8') as stream:
-        geometry = yaml.safe_load(stream)
-
-    actions = []
-    for name, parent in CAMERA_PARENTS.items():
-        mount = geometry[f'{name}_mount']
-        position = mount['position']
-        rotation = mount['rotation']
-        actions.append(
-            Node(
-                package='tf2_ros',
-                executable='static_transform_publisher',
-                name=f'{name}_mount_tf',
-                arguments=[
-                    '--x', str(_finite_number(position['x'], f'{name}.x')),
-                    '--y', str(_finite_number(position['y'], f'{name}.y')),
-                    '--z', str(_finite_number(position['z'], f'{name}.z')),
-                    '--roll', str(_finite_number(rotation['r'], f'{name}.r')),
-                    '--pitch', str(_finite_number(rotation['p'], f'{name}.p')),
-                    '--yaw', str(_finite_number(rotation['y'], f'{name}.y')),
-                    '--frame-id', parent,
-                    '--child-frame-id', f'{name}_link',
-                ],
-                parameters=[{'use_sim_time': True}],
-            )
-        )
-        # Gazebo renders along +X. ROS camera and IMU images use +Z optical.
-        for suffix in ('color', 'imu'):
-            actions.append(
-                Node(
-                    package='tf2_ros',
-                    executable='static_transform_publisher',
-                    name=f'{name}_{suffix}_optical_tf',
-                    arguments=[
-                        '--x', '0', '--y', '0', '--z', '0',
-                        '--roll', str(-math.pi / 2),
-                        '--pitch', '0',
-                        '--yaw', str(-math.pi / 2),
-                        '--frame-id', f'{name}_link',
-                        '--child-frame-id', f'{name}_{suffix}_optical_frame',
-                    ],
-                    parameters=[{'use_sim_time': True}],
-                )
-            )
-    return actions
-
-
-def _build_descriptions(context, sim_share, initial_state):
-    description_share = Path(
-        get_package_share_directory('curtmini_piper_description')
-    )
-    mappings = {
-        'simulation': 'True',
-        'use_sim_time': 'True',
-        'use_simplified_collision': 'True',
-        'use_hokuyo': (
-            'True' if _as_bool(context, 'use_hokuyo') else 'False'
-        ),
-        'use_cameras': (
-            'True' if _as_bool(context, 'use_cameras') else 'False'
-        ),
-        'gazebo_controllers': str(
-            sim_share / 'config' / 'simulation_controllers.yaml'
-        ),
-        'arm_prefix': ARM_PREFIX,
-    }
-
-    simulation_mappings = dict(mappings)
-    simulation_mappings.update({
-        f'{joint}_initial_value': str(value)
-        for joint, value in initial_state['arm'].items()
-    })
-    full_description = xacro.process_file(
-        str(
-            sim_share
-            / 'urdf'
-            / 'curtmini_piper_gz.urdf.xacro'
-        ),
-        mappings=simulation_mappings,
-    ).toxml()
-
-    moveit_mappings = dict(mappings)
-    moveit_mappings['simulation'] = 'False'
-    moveit_config = (
-        MoveItConfigsBuilder(
-            'curtmini_piper',
-            package_name='curtmini_piper_moveit_config',
-        )
-        .robot_description(
-            file_path=str(
-                description_share
-                / 'urdf'
-                / 'curtmini_piper.urdf.xacro'
-            ),
-            mappings=moveit_mappings,
-        )
-        .robot_description_semantic(
-            file_path='config/curtmini_piper.srdf'
-        )
-        .robot_description_kinematics(file_path='config/kinematics.yaml')
-        .joint_limits(file_path='config/joint_limits.yaml')
-        .trajectory_execution(
-            file_path=str(
-                sim_share / 'config' / 'moveit_controllers.yaml'
-            )
-        )
-        .to_moveit_configs()
-    )
-    moveit_config.sensors_3d = {}
-    return full_description, moveit_config
-
-
-def _controller_spawner(*controller_names):
-    return Node(
-        package='controller_manager',
-        executable='spawner',
-        output='screen',
-        arguments=[
-            *controller_names,
-            '--controller-manager',
-            '/controller_manager',
-            '--controller-manager-timeout',
-            '60',
-            '--switch-timeout',
-            '30',
-            '--service-call-timeout',
-            '40',
-        ],
-    )
-
-
 def _launch_setup(context):
-    sim_share = Path(
-        get_package_share_directory('curtmini_piper_gz_sim')
-    )
-    moveit_share = Path(
-        get_package_share_directory('curtmini_piper_moveit_config')
-    )
-    curt_share = Path(get_package_share_directory('curt_mini_description'))
-    agx_urdf_share = Path(
-        get_package_share_directory('agx_arm_urdf')
-    )
-    neo_worlds_share = Path(
-        get_package_share_directory('neo_gz_worlds')
-    )
-    ros_gz_share = Path(get_package_share_directory('ros_gz_sim'))
+    sim_share = Path(get_package_share_directory('curtmini_piper_gz_sim'))
+    neo_worlds_share = Path(get_package_share_directory('neo_gz_worlds'))
 
-    initial_state = _load_initial_state(
+    initial_state = load_initial_state(
         LaunchConfiguration('initial_state_file').perform(context)
     )
-    full_description, moveit_config = _build_descriptions(
-        context, sim_share, initial_state
+    mappings = robot_mappings(
+        sim_share,
+        use_hokuyo=_as_bool(context, 'use_hokuyo'),
+        use_cameras=_as_bool(context, 'use_cameras'),
     )
-
-    world = _resolve_world(
+    full_description = simulation_description(
+        sim_share, mappings, initial_state
+    )
+    moveit_config = build_moveit_config(mappings)
+    world = resolve_world(
         LaunchConfiguration('world').perform(context),
         sim_share,
         neo_worlds_share,
     )
-    gz_args = []
-    if not _as_bool(context, 'paused'):
-        gz_args.append('-r')
-    if not _as_bool(context, 'gui'):
-        gz_args.append('-s')
-    gz_args.append(world)
 
-    move_group_configuration = {
-        'publish_robot_description_semantic': True,
-        'allow_trajectory_execution': True,
-        'publish_planning_scene': True,
-        'publish_geometry_updates': True,
-        'publish_state_updates': True,
-        'publish_transforms_updates': True,
-        'monitor_dynamics': False,
-        'use_sim_time': True,
-    }
-
-    actions = [
-        AppendEnvironmentVariable(
-            'GZ_SIM_RESOURCE_PATH',
-            str(curt_share.parent),
-        ),
-        AppendEnvironmentVariable(
-            'GZ_SIM_RESOURCE_PATH',
-            str(agx_urdf_share.parent),
-        ),
-        AppendEnvironmentVariable(
-            'GZ_SIM_RESOURCE_PATH',
-            str(neo_worlds_share / 'models'),
-        ),
-        IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(
-                str(ros_gz_share / 'launch' / 'gz_sim.launch.py')
-            ),
-            launch_arguments={
-                'gz_args': ' '.join(gz_args),
-                'on_exit_shutdown': 'true',
-            }.items(),
-        ),
-        Node(
-            package='robot_state_publisher',
-            executable='robot_state_publisher',
-            output='screen',
-            parameters=[
-                {
-                    'robot_description': full_description,
-                    'use_sim_time': True,
-                }
-            ],
-        ),
-        Node(
-            package='ros_gz_bridge',
-            executable='parameter_bridge',
-            name='ros_gz_bridge',
-            output='screen',
-            parameters=[
-                {
-                    'config_file': str(
-                        sim_share / 'config' / 'gz_bridge.yaml'
-                    ),
-                    'use_sim_time': True,
-                }
-            ],
-        ),
-        Node(
-            package='ros_gz_sim',
-            executable='create',
-            output='screen',
-            arguments=[
-                '-name',
-                'curtmini_piper',
-                '-topic',
-                'robot_description',
-                '-x',
-                str(initial_state['base']['x']),
-                '-y',
-                str(initial_state['base']['y']),
-                '-z',
-                str(initial_state['base']['z']),
-                '-Y',
-                str(initial_state['base']['orientation']),
-            ],
-        ),
-        _controller_spawner(
+    actions = gazebo_start_actions(
+        sim_share, neo_worlds_share, world,
+        paused=_as_bool(context, 'paused'),
+        gui=_as_bool(context, 'gui'),
+    )
+    actions.extend([
+        robot_state_publisher_action(full_description),
+        bridge_action(sim_share),
+        robot_spawn_action(initial_state),
+        controller_spawner_action(
             'joint_state_broadcaster',
             'base_controller',
             'arm_controller',
         ),
-        Node(
-            package='moveit_ros_move_group',
-            executable='move_group',
-            output='screen',
-            parameters=[
-                moveit_config.to_dict(),
-                move_group_configuration,
-            ],
-            remappings=[('joint_states', '/joint_states')],
-            additional_env={
-                'DISPLAY': os.environ.get('DISPLAY', '')
-            },
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                str(
+                    Path(get_package_share_directory('curtmini_piper_moveit_config'))
+                    / 'launch' / 'move_group.launch.py'
+                )
+            ),
+            launch_arguments={
+                'controller_mode': 'sim',
+                'use_sim_time': 'true',
+                'use_hokuyo': str(_as_bool(context, 'use_hokuyo')).lower(),
+                'use_sensors_3d': 'false',
+            }.items(),
         ),
-    ]
+    ])
 
     if _as_bool(context, 'use_cameras'):
-        actions.extend(_camera_mount_actions(Path(
+        description_share = Path(
             get_package_share_directory('curtmini_piper_description')
-        )))
+        )
+        actions.extend(camera_mount_actions(description_share))
+
+    if _as_bool(context, 'use_apriltags'):
+        actions.extend(apriltag_actions(
+            world, sim_share,
+            LaunchConfiguration('apriltag_layout_file').perform(context),
+        ))
 
     if _as_bool(context, 'start_joystick'):
         actions.append(
@@ -406,26 +123,7 @@ def _launch_setup(context):
         )
 
     if _as_bool(context, 'use_rviz'):
-        actions.append(
-            Node(
-                package='rviz2',
-                executable='rviz2',
-                output='log',
-                arguments=[
-                    '-d',
-                    str(moveit_share / 'config' / 'moveit.rviz'),
-                ],
-                parameters=[
-                    moveit_config.robot_description,
-                    moveit_config.robot_description_semantic,
-                    moveit_config.robot_description_kinematics,
-                    moveit_config.planning_pipelines,
-                    moveit_config.joint_limits,
-                    {'use_sim_time': True},
-                ],
-                remappings=[('joint_states', '/joint_states')],
-            )
-        )
+        actions.append(rviz_action(moveit_config))
 
     return actions
 
@@ -479,6 +177,17 @@ def generate_launch_description():
                 default_value='true',
                 choices=['true', 'false'],
                 description='Add the two simulated D435i-like RGBD and IMU sensors.',
+            ),
+            DeclareLaunchArgument(
+                'use_apriltags',
+                default_value='false',
+                choices=['true', 'false'],
+                description='Spawn the AprilTag exercise panels.',
+            ),
+            DeclareLaunchArgument(
+                'apriltag_layout_file',
+                default_value=str(sim_share / 'config' / 'apriltags.yaml'),
+                description='YAML file with AprilTag IDs, sizes, and world poses.',
             ),
             DeclareLaunchArgument(
                 'initial_state_file',

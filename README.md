@@ -83,13 +83,13 @@ is bind-mounted, so its mount values apply after restarting Gazebo and its
 clients. Gazebo publishes the simulated cameras' mount transforms from that
 YAML. Use the workspace overlay to build local URDF or simulator code changes.
 
-`config/moveit_controllers.yaml` sets MoveIt's
+`curtmini_piper_moveit_config/config/moveit_controllers_sim.yaml` sets MoveIt's
 `trajectory_execution.allowed_start_tolerance` to `0.0`. This skips MoveIt's
 check that a trajectory starts at the current joint positions. Keep the
 `joint_state_broadcaster` active so MoveIt receives joint states for planning.
-For a host installation, rebuild this package after changing the controller
-YAML. Regular Docker builds use the upstream copy; use the workspace overlay
-to test a local controller YAML change.
+For a host installation, rebuild `curtmini_piper_moveit_config` after changing
+this controller YAML. Regular Docker builds use the upstream copy; use the
+workspace overlay to test a local controller YAML change.
 
 Run without Gazebo and RViz windows for headless testing:
 
@@ -137,6 +137,37 @@ To run without a Gazebo window but with RViz:
 ```bash
 ros2 launch curtmini_piper_gz_sim simulation.launch.py gui:=false
 ```
+
+## AprilTag navigation exercise
+
+Enable the optional tag panels in either packaged world:
+
+```bash
+ros2 launch curtmini_piper_gz_sim simulation.launch.py \
+  world:=curtmini_piper_map use_apriltags:=true
+```
+
+`config/apriltags.yaml` gives each panel's ID, black-square edge size, and pose
+in world coordinates. The three supplied `36h11` textures have IDs 0, 1, and 2.
+To change an exercise, edit that file and restart Gazebo; in Docker it is
+bind-mounted as a single runtime file. For a native install, pass
+`apriltag_layout_file:=/absolute/path/to/apriltags.yaml` to test edits without
+reinstalling the package. The panels have collision geometry and can affect
+the lidar scan and a new map. They are deliberately not published as
+ground-truth ROS transforms:
+the robot must observe them with its camera.
+
+The base camera starts near the first panel. The optional `apriltag-base`
+Compose service runs `apriltag_ros` on its color image and camera calibration,
+publishing `/base_camera/tag_detections` and observed tag TFs. Set
+`SIM_USE_APRILTAGS=true` and start `gz-sim`, `apriltag-base`, and
+`moveit-rviz-sim` from the container repository. Keep `APRILTAG_SIZE` equal to
+the black-square edge in the layout (0.20 m for the supplied panels). See the
+project's AprilTag exercise guide for the full Docker workflow.
+
+The tag bitmaps are copied from
+[AprilRobotics/apriltag-imgs](https://github.com/AprilRobotics/apriltag-imgs)
+under the BSD 2-Clause license in `models/apriltags/LICENSE`.
 
 ## Teleoperate the simulated robot with a keyboard
 

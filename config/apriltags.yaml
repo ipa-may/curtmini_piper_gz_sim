@@ -1,0 +1,13 @@
+# Static AprilTag panels in Gazebo world coordinates (metres/radians).
+# The tag size is the outer black-square edge, not the larger white panel.
+# Match apriltag-base's APRILTAG_SIZE to these sizes (0.20 m by default).
+tags:
+  - id: 0
+    size: 0.20
+    pose: {x: 1.5, y: -2.0, z: 0.38, roll: 0.0, pitch: 0.0, yaw: 3.14159}
+  - id: 1
+    size: 0.20
+    pose: {x: -1.5, y: -3.8, z: 0.38, roll: 0.0, pitch: 0.0, yaw: -1.5708}
+  - id: 2
+    size: 0.20
+    pose: {x: 3.2, y: -0.8, z: 0.38, roll: 0.0, pitch: 0.0, yaw: 3.14159}

@@ -17,3 +17,4 @@ services:
       - world:=${SIM_WORLD:-curtmini_piper}
       - use_hokuyo:=${SIM_USE_HOKUYO:-true}
       - use_cameras:=${SIM_USE_CAMERAS:-true}
+      - use_apriltags:=${SIM_USE_APRILTAGS:-false}

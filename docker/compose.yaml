@@ -35,6 +35,12 @@ services:
         bind:
           create_host_path: false
       - type: bind
+        source: ../config/apriltags.yaml
+        target: /opt/ws/install/share/curtmini_piper_gz_sim/config/apriltags.yaml
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
         source: ${CURTMINI_PIPER_DESCRIPTION_CONFIG_DIR:-../../../curtmini_piper/curtmini_piper_description/config}
         target: /opt/ws/install/share/curtmini_piper_description/config
         read_only: true
@@ -50,4 +56,5 @@ services:
       - world:=${SIM_WORLD:-curtmini_piper}
       - use_hokuyo:=${SIM_USE_HOKUYO:-true}
       - use_cameras:=${SIM_USE_CAMERAS:-true}
+      - use_apriltags:=${SIM_USE_APRILTAGS:-false}
     stop_grace_period: 20s

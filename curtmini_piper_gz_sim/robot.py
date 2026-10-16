@@ -1,6 +1,6 @@
 from pathlib import Path
+from xml.etree import ElementTree
 
-from ament_index_python.packages import get_package_share_directory
 from launch_ros.actions import Node
 import xacro
 import yaml
@@ -26,28 +26,16 @@ def load_initial_state(path):
         name: finite_number(state['base'][name], f'base.{name}')
         for name in ('x', 'y', 'z', 'orientation')
     }
-    limits_path = (
-        Path(get_package_share_directory('agx_arm_urdf'))
-        / 'piper' / 'config' / 'joint_position_limits.yaml'
-    )
-    with limits_path.open(encoding='utf-8') as stream:
-        limits = yaml.safe_load(stream)['joint_limits']
     arm = {}
-    for index, joint in enumerate(ARM_JOINTS, start=1):
-        value = finite_number(state['arm'][joint], f'arm.{joint}')
-        bounds = limits[f'joint{index}']
-        if not bounds['lower'] <= value <= bounds['upper']:
-            raise RuntimeError(
-                f'arm.{joint}={value} is outside the robot limits '
-                f"[{bounds['lower']}, {bounds['upper']}]"
-            )
-        arm[joint] = value
+    for joint in ARM_JOINTS:
+        arm[joint] = finite_number(state['arm'][joint], f'arm.{joint}')
     return {'base': base, 'arm': arm}
 
 
-def robot_mappings(sim_share, use_hokuyo, use_cameras):
+def robot_mappings(sim_share, arm_model, use_hokuyo, use_cameras):
     return {
         'simulation': 'True',
+        'arm_model': arm_model,
         'use_sim_time': 'True',
         'use_simplified_collision': 'True',
         'use_hokuyo': 'True' if use_hokuyo else 'False',
@@ -65,10 +53,25 @@ def simulation_description(sim_share, mappings, initial_state):
         f'{joint}_initial_value': str(value)
         for joint, value in initial_state['arm'].items()
     })
-    return xacro.process_file(
+    description = xacro.process_file(
         str(sim_share / 'urdf' / 'curtmini_piper_gz.urdf.xacro'),
         mappings=simulation_mappings,
     ).toxml()
+    robot = ElementTree.fromstring(description)
+    joints = {joint.get('name'): joint for joint in robot.findall('joint')}
+    for name, value in initial_state['arm'].items():
+        joint = joints.get(name)
+        limit = joint.find('limit') if joint is not None else None
+        if limit is None:
+            raise RuntimeError(f'No position limits found for {name}')
+        lower = float(limit.get('lower'))
+        upper = float(limit.get('upper'))
+        if not lower <= value <= upper:
+            raise RuntimeError(
+                f'arm.{name}={value} is outside the robot limits '
+                f'[{lower}, {upper}]'
+            )
+    return description
 
 
 def robot_state_publisher_action(full_description):

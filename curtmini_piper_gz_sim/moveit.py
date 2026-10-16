@@ -6,18 +6,20 @@ from moveit_configs_utils import MoveItConfigsBuilder
 
 
 def build_moveit_config(mappings):
+    model = mappings['arm_model']
+    config_package = f'curtmini_{model}_gripper_moveit_config'
     description_share = Path(
         get_package_share_directory('curtmini_piper_description')
     )
     moveit_mappings = dict(mappings)
     moveit_mappings['simulation'] = 'False'
-    moveit_share = Path(
-        get_package_share_directory('curtmini_piper_moveit_config')
+    config_share = Path(
+        get_package_share_directory(config_package)
     )
     moveit_config = (
         MoveItConfigsBuilder(
             'curtmini_piper',
-            package_name='curtmini_piper_moveit_config',
+            package_name=config_package,
         )
         .robot_description(
             file_path=str(
@@ -34,7 +36,7 @@ def build_moveit_config(mappings):
         .joint_limits(file_path='config/joint_limits.yaml')
         .trajectory_execution(
             file_path=str(
-                moveit_share / 'config' / 'moveit_controllers_sim.yaml'
+                config_share / 'config' / 'moveit_controllers_sim.yaml'
             )
         )
         .to_moveit_configs()

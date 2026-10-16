@@ -54,15 +54,20 @@ RViz:
 ros2 launch curtmini_piper_gz_sim simulation.launch.py
 ```
 
+The simulator defaults to `arm_model:=piper_x`. Set `arm_model:=piper_l` or
+`arm_model:=piper_h` to use either of the other supported arm and gripper
+models. The `gz-sim` Compose service reads this choice from `ARM_MODEL` in the
+containers `.env` file.
+
 The simulation uses one Gazebo-owned controller manager for both the Curt Mini
-base and Piper arm. The launch starts the base and arm controllers and the
-`joint_state_broadcaster`. Check that all three are active with
+base and Piper arm. The launch starts the base, arm, and gripper controllers
+and the `joint_state_broadcaster`. Check that all four are active with
 `ros2 control list_controllers`; `/joint_states` requires the broadcaster.
 
 Set the startup pose in `config/initial_state.yaml`: `base.x`, `base.y`, and
 `base.z` are metres, `base.orientation` is one rotation around Z in radians,
 and the six `arm.piper_joint*` values are radians. The launch validates every
-joint against the Piper's position limits before starting Gazebo. From the
+joint against the selected arm model's URDF limits before starting Gazebo. From the
 simulator repository root, pass the source file to a local ROS launch so edits
 take effect without rebuilding the package:
 
@@ -83,13 +88,13 @@ is bind-mounted, so its mount values apply after restarting Gazebo and its
 clients. Gazebo publishes the simulated cameras' mount transforms from that
 YAML. Use the workspace overlay to build local URDF or simulator code changes.
 
-`curtmini_piper_moveit_config/config/moveit_controllers_sim.yaml` sets MoveIt's
+Each selected gripper MoveIt package's `config/moveit_controllers_sim.yaml` sets MoveIt's
 `trajectory_execution.allowed_start_tolerance` to `0.0`. This skips MoveIt's
 check that a trajectory starts at the current joint positions. Keep the
 `joint_state_broadcaster` active so MoveIt receives joint states for planning.
-For a host installation, rebuild `curtmini_piper_moveit_config` after changing
-this controller YAML. Regular Docker builds use the upstream copy; use the
-workspace overlay to test a local controller YAML change.
+For a host installation, rebuild the selected gripper MoveIt package after
+changing its controller YAML. Regular Docker builds use the upstream copy;
+use the workspace overlay to test a local controller YAML change.
 
 Run without Gazebo and RViz windows for headless testing:
 
@@ -186,7 +191,7 @@ ros2 control list_controllers
 ```
 
 One spawner loads and activates `joint_state_broadcaster`, `base_controller`,
-and `arm_controller` in that order. It allows 30 seconds for each controller
+`arm_controller`, and `gripper_controller` in that order. It allows 30 seconds for each controller
 switch and 40 seconds for each service response on the host, in Docker, and in
 CI. If the spawner exits before completing, later controllers may not be
 loaded. If the state broadcaster is loaded but `inactive` after a startup
@@ -217,5 +222,6 @@ Use `ros2 topic list` to inspect the running simulation. Key topics are
 Gazebo's sensor system and `use_hokuyo:=true`, `/joint_states` when
 `joint_state_broadcaster` is active,
 `/base_controller/odom` for wheel odometry, and
-`/arm_controller/controller_state` for arm-controller feedback. The launch also
+`/arm_controller/controller_state` and `/gripper_controller/controller_state`
+for arm and gripper feedback. The launch also
 configures an `/imu/data` bridge; IMU data requires a working Gazebo sensor.

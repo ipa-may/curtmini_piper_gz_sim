@@ -40,12 +40,14 @@ def _as_bool(context, name):
 def _launch_setup(context):
     sim_share = Path(get_package_share_directory('curtmini_piper_gz_sim'))
     neo_worlds_share = Path(get_package_share_directory('neo_gz_worlds'))
+    arm_model = LaunchConfiguration('arm_model').perform(context)
 
     initial_state = load_initial_state(
         LaunchConfiguration('initial_state_file').perform(context)
     )
     mappings = robot_mappings(
         sim_share,
+        arm_model=arm_model,
         use_hokuyo=_as_bool(context, 'use_hokuyo'),
         use_cameras=_as_bool(context, 'use_cameras'),
     )
@@ -72,6 +74,7 @@ def _launch_setup(context):
             'joint_state_broadcaster',
             'base_controller',
             'arm_controller',
+            'gripper_controller',
         ),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
@@ -82,6 +85,7 @@ def _launch_setup(context):
             ),
             launch_arguments={
                 'controller_mode': 'sim',
+                'arm_model': arm_model,
                 'use_sim_time': 'true',
                 'use_hokuyo': str(_as_bool(context, 'use_hokuyo')).lower(),
                 'use_sensors_3d': 'false',
@@ -134,6 +138,12 @@ def generate_launch_description():
     )
     return LaunchDescription(
         [
+            DeclareLaunchArgument(
+                'arm_model',
+                default_value='piper_x',
+                choices=['piper_x', 'piper_l', 'piper_h'],
+                description='Piper arm and AGX gripper model to simulate.',
+            ),
             DeclareLaunchArgument(
                 'world',
                 default_value='curtmini_piper',

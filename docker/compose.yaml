@@ -51,6 +51,7 @@ services:
       - launch
       - curtmini_piper_gz_sim
       - simulation.launch.py
+      - arm_model:=${ARM_MODEL:-piper_x}
       - gui:=false
       - use_rviz:=false
       - world:=${SIM_WORLD:-curtmini_piper}

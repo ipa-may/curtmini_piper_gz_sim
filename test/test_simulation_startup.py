@@ -44,6 +44,7 @@ def generate_test_description():
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(str(share / 'launch/simulation.launch.py')),
             launch_arguments={
+                'arm_model': 'piper_x',
                 'gui': 'false', 'use_rviz': 'false', 'paused': 'false',
                 'start_joystick': 'false',
             }.items(),
@@ -117,9 +118,11 @@ class TestSimulationStartup(unittest.TestCase):
             'front_left_motor', 'back_left_motor',
             'front_right_motor', 'back_right_motor',
             *(f'piper_joint{i}' for i in range(1, 7)),
+            'piper_gripper',
         }
         expected_controllers = {
             'joint_state_broadcaster', 'base_controller', 'arm_controller',
+            'gripper_controller',
         }
         expected_cameras = {
             (camera, stream)

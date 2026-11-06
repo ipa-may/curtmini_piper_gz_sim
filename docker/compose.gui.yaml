@@ -14,6 +14,7 @@ services:
       - simulation.launch.py
       - arm_model:=${ARM_MODEL:-piper_x}
       - gui:=true
+      - headless:=${HEADLESS:-false}
       - use_rviz:=false
       - world:=${SIM_WORLD:-curtmini_piper}
       - use_hokuyo:=${SIM_USE_HOKUYO:-true}

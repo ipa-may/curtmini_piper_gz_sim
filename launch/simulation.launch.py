@@ -64,7 +64,7 @@ def _launch_setup(context):
     actions = gazebo_start_actions(
         sim_share, neo_worlds_share, world,
         paused=_as_bool(context, 'paused'),
-        gui=_as_bool(context, 'gui'),
+        gui=_as_bool(context, 'gui') and not _as_bool(context, 'headless'),
     )
     actions.extend([
         robot_state_publisher_action(full_description),
@@ -157,6 +157,12 @@ def generate_launch_description():
                 default_value='true',
                 choices=['true', 'false'],
                 description='Start the Gazebo graphical client.',
+            ),
+            DeclareLaunchArgument(
+                'headless',
+                default_value='false',
+                choices=['true', 'false'],
+                description='Run Gazebo server-only; overrides gui:=true.',
             ),
             DeclareLaunchArgument(
                 'paused',

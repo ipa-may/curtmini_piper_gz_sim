@@ -25,9 +25,12 @@ base_controller:
     left_wheel_names: ["front_left_motor", "back_left_motor"]
     right_wheel_names: ["front_right_motor", "back_right_motor"]
 
-    wheel_separation: 0.44
+    # Geometric track: wheel joints at y = +/-0.258 m.
+    wheel_separation: 0.516
     wheel_radius: 0.13
-    wheel_separation_multiplier: 1.0
+    # Skid-steer slip correction, measured against Gazebo ground truth
+    # (effective separation 0.576 m). See doc/odometry_calibration.md.
+    wheel_separation_multiplier: 1.127
     left_wheel_radius_multiplier: 1.0
     right_wheel_radius_multiplier: 1.0
 

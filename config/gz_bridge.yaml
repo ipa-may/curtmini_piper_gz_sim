@@ -16,6 +16,13 @@
   gz_type_name: "gz.msgs.LaserScan"
   direction: GZ_TO_ROS
 
+# Ground-truth base pose from Gazebo's OdometryPublisher (validation only).
+- ros_topic_name: "/ground_truth/odom"
+  gz_topic_name: "/ground_truth/odom"
+  ros_type_name: "nav_msgs/msg/Odometry"
+  gz_type_name: "gz.msgs.Odometry"
+  direction: GZ_TO_ROS
+
 # The ROS names match RealSense nodes launched with camera_name=base_camera or
 # tool_camera and an empty camera_namespace. Gazebo's RGBD sensor has one
 # calibrated CameraInfo stream, shared by its color and depth images.

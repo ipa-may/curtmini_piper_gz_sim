@@ -82,4 +82,18 @@
       </sensor>
     </gazebo>
   </xacro:if>
+
+  <!-- Ground-truth pose from the physics engine, for odometry validation only. -->
+  <!-- Its TF goes to an unbridged topic so it cannot clash with odom->base_link. -->
+  <gazebo>
+    <plugin filename="gz-sim-odometry-publisher-system"
+            name="gz::sim::systems::OdometryPublisher">
+      <odom_frame>world</odom_frame>
+      <robot_base_frame>base_link</robot_base_frame>
+      <odom_topic>/ground_truth/odom</odom_topic>
+      <tf_topic>/ground_truth/tf</tf_topic>
+      <odom_publish_frequency>50</odom_publish_frequency>
+      <dimensions>2</dimensions>
+    </plugin>
+  </gazebo>
 </robot>

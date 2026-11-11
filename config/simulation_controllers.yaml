@@ -28,9 +28,10 @@ base_controller:
     # Geometric track: wheel joints at y = +/-0.258 m.
     wheel_separation: 0.516
     wheel_radius: 0.13
-    # Skid-steer slip correction, measured against Gazebo ground truth
-    # (effective separation 0.576 m). See doc/odometry_calibration.md.
-    wheel_separation_multiplier: 1.127
+    # Skid-steer slip correction, measured against Gazebo ground truth with the
+    # WheelSlip tyre model in urdf/curtmini_piper_gz.urdf.xacro (lateral 1.0):
+    # effective separation 0.592 m. See doc/odometry_calibration.md.
+    wheel_separation_multiplier: 1.147
     left_wheel_radius_multiplier: 1.0
     right_wheel_radius_multiplier: 1.0
 

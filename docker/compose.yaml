@@ -40,7 +40,14 @@ services:
         read_only: true
         bind:
           create_host_path: false
-      # Runtime-tunable configs: edit, then restart gz-sim (no workspace rebuild).
+      # Runtime-tunable configs and sim URDF (xacro is expanded at launch):
+      # edit, then `docker compose up -d --force-recreate gz-sim` (no workspace rebuild).
+      - type: bind
+        source: ../urdf
+        target: /opt/ws/install/share/curtmini_piper_gz_sim/urdf
+        read_only: true
+        bind:
+          create_host_path: false
       - type: bind
         source: ../config/simulation_controllers.yaml
         target: /opt/ws/install/share/curtmini_piper_gz_sim/config/simulation_controllers.yaml

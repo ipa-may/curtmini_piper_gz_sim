@@ -60,6 +60,12 @@ SIM_WORLD=curtmini_piper HEADLESS=true SIM_USE_CAMERAS=false docker compose up g
 `docker compose exec` skips the image entrypoint, so prefix each command with
 `/opt/container/ros_entrypoint.sh` to load the ROS environment.
 
+`config/simulation_controllers.yaml` and `config/gz_bridge.yaml` are
+bind-mounted into `gz-sim` ([`docker/compose.yaml`](../docker/compose.yaml)).
+After editing either file, run `docker compose up -d --force-recreate gz-sim`;
+no workspace rebuild is needed. URDF and Python changes still need
+`workspace-builder`.
+
 1. Check that ground truth is available:
    ```bash
    docker compose exec gz-sim /opt/container/ros_entrypoint.sh gz topic -l | grep ground_truth
@@ -124,8 +130,29 @@ wheel_separation_multiplier: 1.127   # skid-steer slip
 
 ## Verifying the calibration
 
-Repeat the spin test after rebuilding the workspace and restarting `gz-sim`. The
-yaw ratio should be about 1.00, and the straight ratio should still be 1.00.
+Repeat the spin test after recreating `gz-sim`. The yaw ratio should be about
+1.00, and the straight ratio should still be 1.00. First confirm that the
+running controller has the new values:
+
+```bash
+docker compose exec gz-sim /opt/container/ros_entrypoint.sh ros2 param get /base_controller wheel_separation_multiplier
+```
+
+| Test (2026-11-11, after calibration) | Ground truth | Odometry | Ratio odom / gt |
+|---|---|---|---|
+| Spin in place, `ω_cmd = 0.5 rad/s` | 847.6° | 839.5° | **0.990** (was 1.309) |
+
+The remaining 1 % is within run-to-run variation.
+
+**Unmodelled sideways motion while spinning.** In both spin runs, ground truth
+recorded about 0.26 m of travel per radian turned (2.97 m over 654°, and 3.85 m
+over 848°), while odometry reported none. The base does not rotate about
+`base_link`. `diff_drive_controller` cannot represent this sideways motion, so
+it still appears as error in the `odom` frame during spins in place. The
+`net gt` columns of the script (current and maximum straight-line distance from
+the start) show whether this is pivoting about an offset point (the net distance
+oscillates, with a maximum of about twice the pivot radius) or steady drift (the
+net distance keeps growing).
 
 ## Limitations
 
@@ -177,13 +204,20 @@ class Track:
     def __init__(self):
         self.last_yaw = None
         self.last_xy = None
-        self.yaw = 0.0   # signed, unwrapped
-        self.dist = 0.0  # path length
+        self.start_xy = None
+        self.yaw = 0.0      # signed, unwrapped
+        self.dist = 0.0     # path length
+        self.net = 0.0      # straight-line distance from start
+        self.max_net = 0.0  # pivoting at radius r about a point gives max_net ~ 2r
         self.count = 0
 
     def update(self, msg):
         p = msg.pose.pose.position
         y = yaw_of(msg.pose.pose.orientation)
+        if self.start_xy is None:
+            self.start_xy = (p.x, p.y)
+        self.net = math.hypot(p.x - self.start_xy[0], p.y - self.start_xy[1])
+        self.max_net = max(self.max_net, self.net)
         if self.last_yaw is not None:
             self.yaw += wrap(y - self.last_yaw)
             self.dist += math.hypot(p.x - self.last_xy[0], p.y - self.last_xy[1])
@@ -222,7 +256,9 @@ class OdomCheck(Node):
         print(f't={now - self.start:6.1f}s | '
               f'yaw gt={gy:8.1f}° odom={oy:8.1f}° ratio={self.ratio(oy, gy, 10.0)} | '
               f'dist gt={g.dist:6.2f}m odom={o.dist:6.2f}m '
-              f'ratio={self.ratio(o.dist, g.dist, 0.2)}', flush=True)
+              f'ratio={self.ratio(o.dist, g.dist, 0.2)} | '
+              f'net gt={g.net:5.2f}m (max {g.max_net:5.2f}m) odom={o.net:5.2f}m',
+              flush=True)
         if now - self.start >= self.duration:
             self.done = True
 
